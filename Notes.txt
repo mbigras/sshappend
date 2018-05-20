@@ -1,0 +1,176 @@
+SSHappend hack session
+
+Gotchas
+
+* Vagrant keeps it's private key at .vagrant/machines/default/virtualbox/private_key
+* Vagrant can be configured to use a specific private key
+* Copying files as root sets the owner and group to root
+* The ubuntu user won't be able to read the .ssh/authorized_keys file if it's owned by root
+* chown -R ubuntu:ubuntu /home/ubuntu/.ssh
+* All files in /etc/sudoers.d/ should be mode 0440
+* Vagrant can't move files directories owned by root?!
+* /sbin isn't part of the path for new users
+* Get the octal permissions of a file stat -c '%a %n' somefile
+* appending into a file over ssh is tricky ssh user@host sudo bash <<SHELL ended up working
+
+
+ssh-keygen -q -b 2048 -t rsa -N '' -f id_rsa
+ssh-keygen -q -b 2048 -t rsa -N '' -f motd/id_rsa
+
+vagrant up
+
+for ip in 192.168.0.{2,3,4}; do ping -c 1 $ip | grep 'packet loss'; done
+for ip in 192.168.0.{2,3,4}; do ssh-keyscan $ip >> ~/.ssh/known_hosts; done
+for ip in 192.168.0.{2,3,4}; do ssh -i id_rsa vagrant@$ip echo hello world; done
+for ip in 192.168.0.{2,3,4}; do ssh -i id_rsa vagrant@$ip grep ansible /etc/passwd; done
+
+scp -i id_rsa -r motd vagrant@192.168.0.2:~
+ssh -i id_rsa vagrant@192.168.0.2 sudo /bin/bash <<SHELL
+	rm -rf /home/ansible/motd
+	mv /home/vagrant/motd /home/ansible/
+	chown -R ansible:ansible /home/ansible/motd
+SHELL
+
+ssh -i id_rsa vagrant@192.168.0.2
+
+sudo su - ansible
+
+mkdir -p .ssh
+for host in $(cat /home/ansible/motd/hosts); do
+	ssh-keyscan $host >> /home/ansible/.ssh/known_hosts
+done
+
+ansible all -m ping
+
+./sshappend USER1 PRIVKEY1 HOSTS PUBKEY2 USER2
+
+./sshappend vagrant id_rsa motd/hosts motd/id_rsa.pub ansible
+
+ssh -i id_rsa $(awk 'NR==1' hosts)
+ansible-playbook main.yml
+ssh -i id_rsa $(awk 'NR==1' hosts)
+
+
+ssh-keyscan 192.168.0.2 >> ~/.ssh/known_hosts
+vagrantkey='.vagrant/machines/default/virtualbox/private_key'
+ssh -i $vagrantkey vagrant@192.168.0.2 echo hello world
+
+scp -i $vagrantkey id_rsa.pub vagrant@192.168.0.2:~
+ssh -i $vagrantkey vagrant@192.168.0.2 'cat id_rsa.pub >> .ssh/authorized_keys'
+ssh -i $vagrantkey vagrant@192.168.0.2 'cat .ssh/authorized_keys'
+
+ssh -i id_rsa vagrant@192.168.0.2
+vagrant@vagrant:~$ ls
+id_rsa.pub
+vagrant@vagrant:~$ rm id_rsa.pub
+
+https://askubuntu.com/questions/345974/what-is-the-difference-between-adduser-and-useradd
+https://askubuntu.com/questions/94060/run-adduser-non-interactively
+
+adduser --disabled-password --gecos '' ubuntu
+
+root@vagrant:/home# cp -r /home/vagrant/.ssh /home/ubuntu/
+root@vagrant:/home# ls -al /home/ubuntu | grep ssh
+drwx------ 2 root   root   4096 May 19 16:51 .ssh
+root@vagrant:/home# chown -R ubuntu:ubuntu /home/ubuntu/.ssh
+root@vagrant:/home# ls -al /home/ubuntu | grep ssh
+drwx------ 2 ubuntu ubuntu 4096 May 19 16:51 .ssh
+
+https://askubuntu.com/questions/192050/how-to-run-sudo-command-with-no-password
+https://unix.stackexchange.com/questions/27594/why-do-we-need-to-use-visudo-instead-of-directly-modifying-the-sudoers-file
+
+ubuntu ALL=(ALL) NOPASSWD:ALL
+ansible ALL=(ALL) NOPASSWD:ALL
+
+adduser --disabled-password --gecos '' ansible
+
+https://superuser.com/questions/869144/why-does-the-system-have-etc-sudoers-d-how-should-i-edit-it
+
+https://stackoverflow.com/questions/16704059/easiest-way-to-copy-a-single-file-from-host-to-vagrant-guest
+
+config.vm.provision "file", source: "~/.gitconfig", destination: ".gitconfig"
+https://github.com/hashicorp/vagrant/issues/6917
+
+https://askubuntu.com/questions/972611/why-does-sbin-not-included-in-path-for-new-user
+
+https://community.spiceworks.com/how_to/110622-install-ansible-on-64-bit-ubuntu-14-04-lts
+
+What is a PPA?
+
+Personal Package Archives for Ubuntu
+
+Personal Package Archives (PPA) allow you to upload Ubuntu source packages to be built and published as an apt repository by Launchpad. You can find out more about PPAs and how to use them in our help page.
+
+https://askubuntu.com/questions/4983/what-are-ppas-and-how-do-i-use-them
+
+sudo apt-add-repository -y ppa:ansible/ansible
+sudo apt-get update -y
+sudo apt-get install -y ansible
+
+
+https://askubuntu.com/questions/152001/how-can-i-get-octal-file-permissions-from-command-line
+
+
+
+[defaults]
+inventory = hosts
+192.168.0.3
+- hosts: all
+  become: yes
+  tasks:
+    - name: Change the message of the day
+      copy:
+        src: motd.sh
+        dest: /etc/update-motd.d/00-header
+        owner: root
+        group: root
+        mode: 0755
+#!/bin/sh
+echo "ITS OVER 9000!!!"
+
+https://stackoverflow.com/questions/7114990/pseudo-terminal-will-not-be-allocated-because-stdin-is-not-a-terminal
+
+ssh -i .vagrant/machines/web1/virtualbox/private_key vagrant@192.168.0.3 'sudo cat somefile >> /home/ansible/.ssh/authorized_keys'
+bash: /home/ansible/.ssh/authorized_keys: Permission denied
+
+https://stackoverflow.com/questions/13778857/permission-denied-when-trying-to-append-a-file-to-a-root-owned-file-with-sudo
+
+ssh -i .vagrant/machines/web1/virtualbox/private_key vagrant@192.168.0.3 sudo bash -c 'cat somefile >> /home/ansible/.ssh/authorized_keys'
+bash: /home/ansible/.ssh/authorized_keys: Permission denied
+
+ssh -i .vagrant/machines/web1/virtualbox/private_key vagrant@192.168.0.3 sudo bash -c "cat somefile >> /home/ansible/.ssh/authorized_keys"
+bash: /home/ansible/.ssh/authorized_keys: Permission denied
+
+ssh -i .vagrant/machines/web1/virtualbox/private_key vagrant@192.168.0.3 sudo bash <<SHELL
+cat somefile >> /home/ansible/.ssh/authorized_keys
+SHELL
+
+ssh -i .vagrant/machines/web1/virtualbox/private_key vagrant@192.168.0.3 sudo bash <<SHELL
+cat somefile >> /home/ansible/.ssh/authorized_keys
+SHELL
+
+ssh-keygen -q -b 2048 -t rsa -N '' -f keys/host
+ssh-keygen -q -b 2048 -t rsa -N '' -f keys/ansible
+
+http://ermaker.github.io/blog/2015/11/18/change-insecure-key-to-my-own-key-on-vagrant.html
+
+for ip in 192.168.0.{2,3,4}; do ping -c 1 $ip | grep 'packet loss'; done
+for ip in 192.168.0.{2,3,4}; do ssh-keyscan $ip >> ~/.ssh/known_hosts; done
+for ip in 192.168.0.{2,3,4}; do ssh -i keys/host vagrant@$ip echo hello world; done
+for ip in 192.168.0.{2,3,4}; do ssh -i keys/host vagrant@$ip grep ansible /etc/passwd; done
+for ip in 192.168.0.{2,3,4}; do ssh -i keys/host vagrant@$ip ls -a /home/ansible | grep .ssh; done
+
+
+scp -i keys/host -r motd vagrant@192.168.0.2:~
+ssh -i keys/host vagrant@192.168.0.2 sudo /bin/bash <<'SHELL'
+rm -rf /home/ansible/motd
+mv /home/vagrant/motd /home/ansible/
+chown -R ansible:ansible /home/ansible/motd
+
+mkdir -p /home/ansible/.ssh
+for host in $(cat /home/ansible/motd/hosts); do ssh-keyscan $host >> /home/ansible/.ssh/known_hosts; done
+chown -R ansible:ansible /home/ansible/.ssh
+SHELL
+
+./sshappend USER1 PRIVKEY1 HOSTS PUBKEY2 USER2
+./sshappend vagrant keys/host motd/hosts keys/ansible.pub ansible

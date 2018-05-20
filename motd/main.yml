@@ -1,0 +1,15 @@
+- hosts: all
+  become: yes
+  tasks:
+    - name: Change the message of the day
+      copy:
+        src: motd.sh
+        dest: /etc/update-motd.d/00-header
+        owner: root
+        group: root
+        mode: 0755
+
+    - name: Clean up message of the day
+      file:
+        path: /etc/update-motd.d/10-help-text
+        state: absent

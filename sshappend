@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+arg1="$1"
+argc="$#"
+
+usage="Usage: $0 USER1 PRIVKEY1 HOSTS PUBKEY2 USER2"
+
+if [[ "$arg1" =~ "-h" ]]; then
+	echo $usage
+	exit 0
+fi
+
+if [[ "$argc" != "5" ]]; then
+	echo "Invalid args!" 1>&2
+	echo $usage 1>&2
+	exit 1
+fi
+
+user1="$1"
+privkey1="$2"
+hosts="$3"
+pubkey2="$4"
+user2="$5"
+
+tmpkey=/tmp/tmp.pub
+home=/home/$user2
+
+for host in $(cat $hosts); do
+	scp -i $privkey1 $pubkey2 $user1@$host:$tmpkey
+	ssh -i $privkey1 $user1@$host sudo /bin/bash <<-SHELL		
+		mkdir -p $home/.ssh
+		touch $home/.ssh/authorized_keys
+		cat $tmpkey >> $home/.ssh/authorized_keys
+		chown -R $user2:$user2 $home/.ssh
+		rm $tmpkey
+	SHELL
+done
